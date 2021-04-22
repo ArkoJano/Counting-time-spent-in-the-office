@@ -155,7 +155,6 @@ def timedelta_to_HMS(time_delta_data):
 
 
 
-
 with open('input.csv', 'r') as input_file:
     try:
         input_read = csv.reader(input_file, delimiter=';')
