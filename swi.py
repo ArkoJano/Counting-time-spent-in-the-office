@@ -2,15 +2,7 @@ from pprint import pprint
 import csv
 from datetime import datetime, timedelta, date, time
 
-        #testy :
-        #- sprawdzic z ujemna data
-        #- sprawdzic z jakimis zlymi danymi, zrobic validacje tego wszystkiego
-        #   np. pusty wiersz
-        #       niepoprawny format: daty, eventu, bramki
-        #
-
-
-# ------------------------- To dziala ------------------------------------
+      
 
 def validation_of_rows(input_list):
 
@@ -36,7 +28,7 @@ def validation_of_rows(input_list):
         
 
 
-#   DZIALAJACA WERSJA NA KULCZACH-TYGODNIACH, WARTOSCIACH-DNIACH
+
 
 def get_last_days(dict_of_days):
 
@@ -336,10 +328,6 @@ with open('input.csv', 'r') as input_file:
         print(f"Day {day} Work {time_of_work} {weekend}{overtime}{undertime}{inconclusive} {weekly_time_of_work} {time_under}{time_over}")
 
 
-# ------------------------- To dziala ------------------------------------
-
-
- 
 
             # jesli w GATE poziom 0 (E/0/*)
             # to znaczy ze wyszedl z pracy
