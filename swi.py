@@ -1,8 +1,17 @@
 from pprint import pprint
 import csv
 from datetime import datetime, timedelta, date, time
+import re 
 
-      
+        #testy :
+        #- sprawdzic z ujemna data
+        #- sprawdzic z jakimis zlymi danymi, zrobic validacje tego wszystkiego
+        #   np. pusty wiersz
+        #       niepoprawny format: daty, eventu, bramki
+        #
+
+
+# ------------------------- To dziala ------------------------------------
 
 def validation_of_rows(input_list):
 
@@ -18,17 +27,40 @@ def validation_of_rows(input_list):
         else:
 
             # format daty
+            #pattern_date = re.compile(r'[0-2][0-9]{3}-[0-1][0-9]-[0-3][')
             try:
                 datetime.strptime(row[i_date], '%Y-%m-%d %H:%M:%S ')
-            except ValueError:
-                raise ValueError("Incorrect data format, should be 'YYYY-MM-DD hh:mm:ss '")
+            except ValueError as err:
+                print(err)
+
+
 
             # format eventu
+            pattern_event = re.compile(r'Reader (exit|entry)')
+
+            matched_event = re.match(pattern_event, row[i_event])
+            is_matched_event = bool(matched_event)
+
+            if is_matched_event is False:
+                raise ValueError(f'Event data does not match format: Reader (exit|entry)')
+
+
+
+
+            #format bramki
+            pattern_gate = re.compile(r'^E/[0-3]/KD1/[0-9]-[0-9]$')
+
+            matched_gate = re.match( pattern_gate, row[i_gate])
+            is_matched_gate = bool(matched_gate)
+
+            if is_matched_gate is False:
+                raise ValueError(f'Data Gate does not match format: E/[0-3]/KD1/[0-9]-[0-9]')
+
 
         
 
 
-
+#   DZIALAJACA WERSJA NA KULCZACH-TYGODNIACH, WARTOSCIACH-DNIACH
 
 def get_last_days(dict_of_days):
 
@@ -155,6 +187,7 @@ def timedelta_to_HMS(time_delta_data):
 
 
 
+
 with open('input.csv', 'r') as input_file:
     try:
         input_read = csv.reader(input_file, delimiter=';')
@@ -162,6 +195,8 @@ with open('input.csv', 'r') as input_file:
         raise ValueError("""Incorrect data format, should be:
                             '%Y-%m-%d %H:%M:%S ;Reader [event]; E/[]/KD1/[]-[]
                             """)
+    except FileNotFoundError:
+        raise FileNotFoundError(" Could not open file 'input.csv' ")
 
     next(input_read)        #pomija naglowek
     
@@ -287,34 +322,34 @@ with open('input.csv', 'r') as input_file:
 
 
             # obliczenie ilosci czasu nadgodzin i niewyrobienia normy przez caly tydzien
-            try:  
+              
+            
 
-                time_1 = weekly_time_of_work        # czas przepracowany
+            time_1 = weekly_time_of_work        # czas przepracowany
 
-                time_2 = timedelta(hours=normal_time_of_work)   # ktory powinien byc przepracowany
+            time_2 = timedelta(hours=normal_time_of_work)   # ktory powinien byc przepracowany
 
-                if(time_1.seconds == 0 or time_1 == time_2):   # jesli nie przepracowano nawet sekundy
-                    pass                                       # choc dni sa wpisane (np. blad systemu)
-                                                               # lub przepracowano co do sekundy        
-                                                               # dokladnie tyle ile powinno 
-                                       
-                # jesli sa wyrobione nadgodziny                            
-                elif time_1 > time_2:               
-                    time_over = time_1 - time_2
-                    time_over = timedelta_to_HMS(time_over) # konwersja na string do wypisania w
-                                                            # wymaganym formacie
+            if(time_1.seconds == 0 or time_1 == time_2):   # jesli nie przepracowano nawet sekundy
+                pass                                       # choc dni sa wpisane (np. blad systemu)
+                                                            # lub przepracowano co do sekundy        
+                                                            # dokladnie tyle ile powinno 
+                                    
+            # jesli sa wyrobione nadgodziny                            
+            elif time_1 > time_2:               
+                time_over = time_1 - time_2
+                time_over = timedelta_to_HMS(time_over) # konwersja na string do wypisania w
+                                                        # wymaganym formacie
 
-                # jesli nie wyrobiono normy
-                elif time_1 < time_2:               
-                    time_under = time_2 - time_1
-                    time_under = timedelta_to_HMS(time_under) # konwersja na string do wypisania w
-                    time_under = f"-{time_under}"             # wymaganym formacie i dodatnie "-"
-                    
+            # jesli nie wyrobiono normy
+            elif time_1 < time_2:               
+                time_under = time_2 - time_1
+                time_under = timedelta_to_HMS(time_under) # konwersja na string do wypisania w
+                time_under = f"-{time_under}"             # wymaganym formacie i dodatnie "-"
                 
+            
 
             
-            except:
-                pass
+           
 
             # zmiana dni na godziny bo timedelta wypisze w formie np. 1 day 22:11:00
             weekly_time_of_work = timedelta_to_HMS(weekly_time_of_work)
@@ -327,6 +362,10 @@ with open('input.csv', 'r') as input_file:
         print(f"Day {day} Work {time_of_work} {weekend}{overtime}{undertime}{inconclusive} {weekly_time_of_work} {time_under}{time_over}")
 
 
+# ------------------------- To dziala ------------------------------------
+
+
+ 
 
             # jesli w GATE poziom 0 (E/0/*)
             # to znaczy ze wyszedl z pracy
