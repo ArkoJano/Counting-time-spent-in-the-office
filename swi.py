@@ -3,12 +3,6 @@ import csv
 from datetime import datetime, timedelta, date, time
 import re 
 
-        #testy :
-        #- sprawdzic z ujemna data
-        #- sprawdzic z jakimis zlymi danymi, zrobic validacje tego wszystkiego
-        #   np. pusty wiersz
-        #       niepoprawny format: daty, eventu, bramki
-        #
 
 
 # ------------------------- To dziala ------------------------------------
@@ -56,8 +50,13 @@ def validation_of_rows(input_list):
             if is_matched_gate is False:
                 raise ValueError(f'Data Gate does not match format: E/[0-3]/KD1/[0-9]-[0-9]')
 
+# funkcja odejmujaca od sibie dwie podane godziny, zwraca obiekt timedelta
+def substract_datetime(start, end):
+    tmp_date = date(1,1,1)
+    start = datetime.combine( tmp_date, start )
+    end = datetime.combine( tmp_date, end )
 
-        
+    return end - start
 
 
 #   DZIALAJACA WERSJA NA KULCZACH-TYGODNIACH, WARTOSCIACH-DNIACH
@@ -164,20 +163,25 @@ def timedelta_to_HMS(time_delta_data):
     w_hours = 0         # - godzinach
     w_min = 0           # - minutach
     w_sec = 0           # - sekundach
-                            # ktore 
+                         
 
-    if time_delta_data.seconds == 0:
+    if time_delta_data.seconds == 0 and time_delta_data.days == 0:
+        
         return "00:00:00"
 
-    if time_delta_data.days >= 1:
-        for i in range(time_delta_data.days):
-            w_hours += time_delta_data // timedelta(hours=1)
-            w_min += (time_delta_data - timedelta(hours=w_hours)) // timedelta(minutes=1)
-            w_sec += (time_delta_data - timedelta(hours=w_hours, minutes=w_min)) // timedelta(seconds=1)
-    else:
+    if time_delta_data.days == 0 or time_delta_data.days == 1:
+        
         w_hours += time_delta_data // timedelta(hours=1)
         w_min += (time_delta_data - timedelta(hours=w_hours)) // timedelta(minutes=1)
         w_sec += (time_delta_data - timedelta(hours=w_hours, minutes=w_min)) // timedelta(seconds=1)
+
+
+    elif time_delta_data.days > 1:
+        for i in range(time_delta_data.days - 1):
+            w_hours += time_delta_data // timedelta(hours=1)
+            w_min += (time_delta_data - timedelta(hours=w_hours)) // timedelta(minutes=1)
+            w_sec += (time_delta_data - timedelta(hours=w_hours, minutes=w_min)) // timedelta(seconds=1)
+        
     
     f_HMS = f"{w_hours:02}:{w_min:02}:{w_sec:02}"
 
@@ -211,7 +215,7 @@ with open('input.csv', 'r') as input_file:
     _date  = 0   # zmienne odpowiadajace wartosciom w liscie
     event = 1    # zebranej z pliku "input.csv"
     gate  = 2 
-
+    
     date_format = "%Y-%m-%d %H:%M:%S " # format zczytywanej z pliku daty
     
 
@@ -223,155 +227,322 @@ with open('input.csv', 'r') as input_file:
     for index in range(len(input_list)):
 
         formated_date = datetime.strptime( input_list[index][_date], date_format ).date()
+        
         if formated_date not in dict_of_days.keys():
             dict_of_days[formated_date] = { 
-                'entry_hours':list(),
-                'exit_hours':list(),
+                'batches_of_time_in':{},
                 'sum_of_work': int(),
                 'flags':{
                     'weekend':"",
                     'overtime':"", 
                     'undertime':"", 
-                    'inconclusive':""}
+                    'inconclusive':"",
+                    },
+                'out_of_office':1
             }
         
+
+        # z rozpatrywanej daty wybierany jest tylko czas w postaci "hh:mm:ss"
         formated_time = datetime.strptime( input_list[index][_date], date_format ).time()
         
+        # zmienne sprawdzajace poprawnosc wproawdzanch godzin
+        # (aby zapobiedz mozliwosci wprowadzenia godziny wczesniejszych
+        #  niz zapisane poprzedni) sa zerowane
+        fr_td = 0   #formated_time_timedelta - obiekt timedelta rozpatrywanego czasu
+        ls_td = 0   #last_timedelta - obiekt timedelta ostatnio rozpatywanego czasu
+        
+        # numer pietra na ktorym znajduje sie bramka 
+        floor_number = input_list[index][gate][2] 
+
+        # podpisane indeksy w liscie skladajacej sie z [czasu_wejscia, czasu_wyjscia] (z biura)
+        _entry = 0
+        _exit = 1
+        
         if "entry" in input_list[index][event]:
-            dict_of_days[formated_date]['entry_hours'].append(formated_time)
+
+            #jesli nie ma jeszcze daty na liscie
+            if dict_of_days[formated_date]['batches_of_time_in'] == {}:
+                # zmienna oznaczajaca "partie" czasu spedzonego w biurze
+                # zaczynamy od 1 partii, jesli wyjdzie z biura, zwiekszamy
+                # ja o jeden
+                batch = 1
+                dict_of_days[formated_date]['batches_of_time_in'][batch] = list()
+            
+            if batch in list(dict_of_days[formated_date]['batches_of_time_in'].keys()):
+                
+                # dodaj ja jako pierwsza
+                if dict_of_days[formated_date]['batches_of_time_in'][batch] == list():
+
+                    dict_of_days[formated_date]['batches_of_time_in'][batch].append(formated_time)
+                    dict_of_days[formated_date]['batches_of_time_in'][batch].append(formated_time)
+                    
+                    
+                    # ustaw ja jako ostatnia rozpatrywana date
+                    ls = formated_time  # ls - ostatnia rozpatrywana data
+
+                    # flaga na 0 - czyli jest w biurze
+                    dict_of_days[formated_date]['out_of_office'] = 0
+
+                # na miejsce czasu WYJŚCIA tymczasowo zapisywany jest 
+                # ostatni czas WEJŚCIA, gdyby nie znaleziono jakiegos
+                # czasu wyjscia to ten zostanie za niego uznany
+                else: 
+                    # ustatawiamy flage 'inconclusive'
+                    dict_of_days[formated_date]['flags']['inconclusive'] = "i "
+                    dict_of_days[formated_date]['batches_of_time_in'][batch][1] = formated_time
+            else:
+                dict_of_days[formated_date]['batches_of_time_in'][batch] = list()
+                
+                dict_of_days[formated_date]['batches_of_time_in'][batch].append(formated_time)
+                dict_of_days[formated_date]['batches_of_time_in'][batch].append(formated_time)
+                
+                # ustaw ja jako ostatnia rozpatrywana date
+                ls = formated_time  # ls - ostatnia rozpatrywana data
+
+                # flaga na 0 - czyli jest w biurze
+                dict_of_days[formated_date]['out_of_office'] = 0
+            
+
+            # konwersja na typ timedela aby moc porownac aktualnie 
+            # rozpatrywana godzine z ostantio rozpatrywana godzine
+            # aby wykryc ewentualne bledy z godzinami
+             
+            # formated_time_timedelta
+            fr_td = timedelta(hours=formated_time.hour, minutes=formated_time.minute, seconds= formated_time.second)
+            # last_timedelta
+            ls_td = timedelta(hours=ls.hour, minutes=ls.minute, seconds= ls.second)
+
+            # jesli dodatwana godzina jest "pozniejsza" od poprzedniej
+            # to wszystko w porzadku
+            if fr_td > ls_td:
+                # dodaj ja jako kolejna godzine
+                #dict_of_days[formated_date]['batches_of_time_in'][batch][0] = formated_time
+                
+                #dict_of_days[formated_date]['entry_hours'].append(formated_time)
+                # ustaw ja jako ostantio dodana
+                ls = formated_time
+
+            # jesli nie to pomin jak i ustaw flage "inconclusive"
+            elif fr_td < ls_td:
+                dict_of_days[formated_date]['flags']['inconclusive'] = "i "
+                
+                # raise ValueError(f"Entry time of day {formated_date} - {fr_td} is earlier than the previous one : {ls_td}")
+
+        
 
         elif "exit" in input_list[index][event]:
-           dict_of_days[formated_date]['exit_hours'].append(formated_time)
-        
+            # jesli ta partia czasu znajduje sie w wartosciach
+            if batch in list(dict_of_days[formated_date]['batches_of_time_in'].keys()):
+                # jesli lista godzin tej partii nie jest pusta, czyli juz wszedl
+                if len(dict_of_days[formated_date]['batches_of_time_in'][batch]) != 0:
+                    # jesli na miejscu godziny wejscia jest odpowiedni typ <datatime.time>
+                    if type(dict_of_days[formated_date]['batches_of_time_in'][batch][_entry]) == type(formated_time):
 
+                        
+                        # jesli przechodzi przez bramke na parterze
+                        if floor_number == str(0):
+                            # jesli znajduje sie w biurze
+                            if dict_of_days[formated_date]['out_of_office'] == 0:
+                                
+                                # dodaj pierwsza godzine WYJSCIA 
+                                dict_of_days[formated_date]['batches_of_time_in'][batch][1] = formated_time
 
+                                # po tym wyjsciu z biura, jesli do niego wroci
+                                # utworzymy kolejna partie czasu
+                                batch += 1
 
-    # oblicza czas pracy tego dnia
-    for day in dict_of_days:
-        tmp_date = date(1, 1, 1)
+                                # wyszedl z biura wiec ustawiamy flage na 1
+                                dict_of_days[formated_date]["out_of_office"] = 1
 
-        if ( len(dict_of_days[day]['entry_hours']) == 0 ):
-            dict_of_days[day]['flags']['inconclusive'] = "i"
+                                # znaleziono czasy wyjscia wiec mozemy usunac flage
+                                # jest to konieczne poniewaz w warunku wyzej profilaktycznie
+                                # ja ustawiamy na wypadek gdyby nie byl podany zaden z 
+                                # czasow WYJSCIA
+                                dict_of_days[formated_date]['flags']['inconclusive'] = ""
 
-            start_work = datetime.combine(tmp_date, dict_of_days[day]['exit_hours'][0])
-            end_work = datetime.combine(tmp_date, dict_of_days[day]['exit_hours'][-1])
-            suma = end_work - start_work 
+                                ls = formated_time  # ls - ostatnia rozpatrywana data
+                    
             
+                else:
+                    dict_of_days[formated_date]['flags']['inconclusive'] = "i "
+                    #raise ValueError("Nie mozesz wyjsc jak jeszcze nie weszles")
+               
+            # jesli nie byloby godziny WEJSCIA tego dnia
+            else:
+                # ustaw flage 'inconclusive'
+                dict_of_days[formated_date]['flags']['inconclusive'] = "i "
+                batch = 1
+                #stworz nowa liste ktora bedzie przechowywala [czas_rozpoczacia, czas_zakonczenia]
+                dict_of_days[formated_date]['batches_of_time_in'][batch] = list()
+                
+                # wypelnij liste najpierw godzina WEJSCIA rowna 00:00:00
+                dict_of_days[formated_date]['batches_of_time_in'][batch].append(time(second=0))
+                # i index 1 faktyczna godzina WYJSCIA 
+                dict_of_days[formated_date]['batches_of_time_in'][batch].append(formated_time)
+                
+                # ustaw ja jako ostatnia rozpatrywana date
+                ls = formated_time  # ls - ostatnia rozpatrywana data
 
-            dict_of_days[day]['sum_of_work'] =  timedelta(seconds = suma.seconds)
+                # flaga na 0 - czyli jest w biurze
+                dict_of_days[formated_date]['out_of_office'] = 1
 
-        elif (len(dict_of_days[day]['exit_hours']) == 0):
-            dict_of_days[day]['flags']['inconclusive'] = "i"
+                #raise ValueError(f"Nie mozesz wyjsc jak jeszcze nie weszles")
 
-            start_work = datetime.combine(tmp_date, dict_of_days[day]['entry_hours'][0])
-            end_work = datetime.combine(tmp_date, dict_of_days[day]['entry_hours'][-1])
-            suma = end_work - start_work 
+# --------------------- Pozostalosci --------------------------------------------#
 
-            dict_of_days[day]['sum_of_work'] =  timedelta(seconds = suma.seconds)
-        
-        else:
-            
-            start_work = datetime.combine(tmp_date, dict_of_days[day]['entry_hours'][0])
-            end_work = datetime.combine(tmp_date, dict_of_days[day]['exit_hours'][-1])
-            suma = end_work - start_work 
+            # konwersja na typ timedela aby moc porownac aktualnie 
+            # rozpatrywana godzine z ostantio rozpatrywana godzine
+            # aby wykryc ewentualne bledy z godzinami
+             
+            # formated_date_timedelta
+            fr_td = timedelta(hours=formated_time.hour, minutes=formated_time.minute, seconds= formated_time.second)
+            # last_day_timedelta
+            ls_td = timedelta(hours=ls.hour, minutes=ls.minute, seconds= ls.second)
 
+            # eliminujemy mozliwosc podania wczesniejszej godziny WYJSCIA
+            # z biura niz godzina WEJSCIA do biura
 
-            dict_of_days[day]['sum_of_work'] =  timedelta(seconds = suma.seconds)
+            # jesli dodawana godzina jest "pozniejsza" od poprzedniej
+            # to wszystko w porzadku
+
+            if fr_td > ls_td:
+                # ustaw ja jako ostantio dodana
+                ls = formated_time
+
+            # jesli nie to pomin i ustaw flage "inconclusive"
+            elif fr_td < ls_td:
+                dict_of_days[formated_date]['flags']['inconclusive'] = "i "
+                
+               # raise ValueError(f"Exit time of day {formated_date} - {fr_td} is earlier than the previous one : {ls_td}")
+
+# --------------------- Pozostalosci --------------------------------------------#
+      
+    # pprint(dict_of_days)
 
     
 
-
-    # wypisywanie ostatecznego komunikatu
+    # oblicza czas pracy konkretnego dnia
     for day in dict_of_days:
-        #time_of_work = str(dict_of_days[day]['sum_of_work'])
-
-        # suma pracy calego dnia przekonwertowana z 'timedelta' do formatu: hours:min:sec
-        time_of_work = timedelta_to_HMS(dict_of_days[day]['sum_of_work'])
-
-
-        #-----Flagi----
-        weekly_time_of_work = ""        # puste zmienne-flagi ktore beda wypelnione
-        normal_time_of_work = ""        # odpowiednimi wartosciami jesli 
-        time_over = ""                  # spelnia warunki 
-        time_under = ""
         
-
-        if (day.weekday() == 5 or day.weekday() == 6):      # jesli dany dzien byl  
-            dict_of_days[day]['flags']['weekend'] = "w"     # weekendem - dodaj flage 'w'
+        # zmienna odpowiedzialna za przechowanie sumy czasu
+        # wszystkich partii pracy
+        sum_of_all_batch = timedelta(seconds=0)
         
-        if ( dict_of_days[day]['sum_of_work'] > timedelta(hours=9) ):   # jesli przepracowal ponad 9h 
-            dict_of_days[day]['flags']['overtime'] = "ot"               # dodaj flage 'ot'
-        
-        if ( dict_of_days[day]['sum_of_work'] < timedelta(hours=6) ):   # jesli przepracowal mniej niz
-            dict_of_days[day]['flags']['undertime'] = "ut"              # 6h - dodaj flage 'ut'
-        
-        # Przypisanie odpowiednich wartosci flagom
-        weekend = dict_of_days[day]['flags']['weekend']
-        overtime = dict_of_days[day]['flags']['overtime']
-        undertime = dict_of_days[day]['flags']['undertime']
-        inconclusive = dict_of_days[day]['flags']['inconclusive']
-
-        
-        # Utworzenie slownika z ostantimi dniami tygodnia za pomoca funkcji
-        dict_of_last_days = get_last_days(dict_of_days)
-
-        
-        # jesli dzien jest ostatnim dniem tygodnia to zlicz caly przepracowany w nim czas
-        if day in dict_of_last_days.values():
-            weekly_time_of_work, normal_time_of_work = get_weekly_time_of_work(dict_of_days, dict_of_last_days, day)
+        # ilosc "partii" w ktorych przebywal w biurze
+        number_of_batches = len(list(dict_of_days[day]['batches_of_time_in'].keys()))
 
 
-            # obliczenie ilosci czasu nadgodzin i niewyrobienia normy przez caly tydzien
-              
-            
+        # jesli tego dnia nie przebywal w biurze 
+        if ( number_of_batches == 0 ):
+            dict_of_days[day]['flags']['inconclusive'] = "i "
+            dict_of_days[day]['sum_of_work'] =  timedelta(seconds = 0)
 
-            time_1 = weekly_time_of_work        # czas przepracowany
-
-            time_2 = timedelta(hours=normal_time_of_work)   # ktory powinien byc przepracowany
-
-            if(time_1.seconds == 0 or time_1 == time_2):   # jesli nie przepracowano nawet sekundy
-                pass                                       # choc dni sa wpisane (np. blad systemu)
-                                                            # lub przepracowano co do sekundy        
-                                                            # dokladnie tyle ile powinno 
-                                    
-            # jesli sa wyrobione nadgodziny                            
-            elif time_1 > time_2:               
-                time_over = time_1 - time_2
-                time_over = timedelta_to_HMS(time_over) # konwersja na string do wypisania w
-                                                        # wymaganym formacie
-
-            # jesli nie wyrobiono normy
-            elif time_1 < time_2:               
-                time_under = time_2 - time_1
-                time_under = timedelta_to_HMS(time_under) # konwersja na string do wypisania w
-                time_under = f"-{time_under}"             # wymaganym formacie i dodatnie "-"
+        # jesli tego dnia przebywal w biurze
+        else:
+            # wykonaj dla kazdej parti pracy
+            for index in range(1,number_of_batches+1):
                 
+                # przypisujemy do zmiennych konkretne godzinowe wartosci wejscia
+                # i wyjscia do/z budynku
+                start_work = dict_of_days[day]['batches_of_time_in'][index][_entry]
+                end_work = dict_of_days[day]['batches_of_time_in'][index][_exit]
+                    
+                # suma jednej partii
+                sum_of_one_batch = substract_datetime(start_work, end_work)
+                sum_of_all_batch += sum_of_one_batch
+
+            # zapisujemy w slowniku konkretnego dnia ilosc czasu spedzonego w biurze
+            dict_of_days[day]['sum_of_work'] =  timedelta(seconds = sum_of_all_batch.seconds)
+
+
+
+
+    with open('result', 'w') as result:
+        # wypisywanie ostatecznego komunikatu
+        for day in dict_of_days:
+
+
+            # suma pracy calego dnia przekonwertowana z 'timedelta' do formatu: hours:min:sec
+            time_of_work = timedelta_to_HMS(dict_of_days[day]['sum_of_work'])
+
+
+            #-----Flagi----
+            weekly_time_of_work = ""        # puste zmienne-flagi ktore beda wypelnione
+            normal_time_of_work = ""        # odpowiednimi wartosciami jesli 
+            time_over = ""                  # spelnia warunki 
+            time_under = ""
             
 
+            if (day.weekday() == 5 or day.weekday() == 6):      # jesli dany dzien byl  
+                dict_of_days[day]['flags']['weekend'] = "w "     # weekendem - dodaj flage 'w'
             
-           
+            if ( dict_of_days[day]['sum_of_work'] > timedelta(hours=9) ):   # jesli przepracowal ponad 9h 
+                dict_of_days[day]['flags']['overtime'] = "ot "               # dodaj flage 'ot'
+            
+            if ( dict_of_days[day]['sum_of_work'] < timedelta(hours=6) ):   # jesli przepracowal mniej niz
+                dict_of_days[day]['flags']['undertime'] = "ut "              # 6h - dodaj flage 'ut'
+            
+            # Przypisanie odpowiednich wartosci flagom
+            weekend = dict_of_days[day]['flags']['weekend']
+            overtime = dict_of_days[day]['flags']['overtime']
+            undertime = dict_of_days[day]['flags']['undertime']
+            inconclusive = dict_of_days[day]['flags']['inconclusive']
 
-            # zmiana dni na godziny bo timedelta wypisze w formie np. 1 day 22:11:00
-            weekly_time_of_work = timedelta_to_HMS(weekly_time_of_work)
+            
+            # Utworzenie slownika z ostantimi dniami tygodnia za pomoca funkcji
+            dict_of_last_days = get_last_days(dict_of_days)
 
+            
+            # jesli dzien jest ostatnim dniem tygodnia to zlicz caly przepracowany w nim czas
+            if day in dict_of_last_days.values():
+                weekly_time_of_work, normal_time_of_work = get_weekly_time_of_work(dict_of_days, dict_of_last_days, day)
+             
+               
+                # obliczenie ilosci czasu nadgodzin i niewyrobienia normy przez caly tydzien
+                
+                time_1 = weekly_time_of_work        # czas przepracowany
 
+                time_2 = timedelta(hours=normal_time_of_work)   # ktory powinien byc przepracowany
+
+                if(time_1 == time_2):   # jesli nie przepracowano przepracowano         
+                    pass                # co do sekundydokladnie tyle ile powinno
+                                                           
+                # jesli nie przepracowan nawet sekundy (np. blad systemu)
+                elif time_1.seconds == 0:
+                    time_under = timedelta_to_HMS(time_2)   # konwersja na string do wypisania w
+                    time_under = f"-{time_under}"           # wymaganym formacie i dodatnie "-"
+                    
+
+                # jesli sa wyrobione nadgodziny                            
+                elif time_1 > time_2:               
+                    time_over = time_1 - time_2
+                    time_over = timedelta_to_HMS(time_over) # konwersja na string do wypisania w
+                                                            # wymaganym formacie
+
+                # jesli nie wyrobiono normy
+                elif time_1 < time_2:               
+                    time_under = time_2 - time_1
+                    time_under = timedelta_to_HMS(time_under) # konwersja na string do wypisania w
+                    time_under = f"-{time_under}"             # wymaganym formacie i dodatnie "-"
+                    
         
-        
+
+                # konwersja z timedelta na string w odpowiednim formacie (bez dni, >24h)
+                weekly_time_of_work = timedelta_to_HMS(weekly_time_of_work)
 
 
-        print(f"Day {day} Work {time_of_work} {weekend}{overtime}{undertime}{inconclusive} {weekly_time_of_work} {time_under}{time_over}")
+            
+            
 
+
+            print(f"Day {day} Work {time_of_work} {weekend}{overtime}{undertime}{inconclusive} {weekly_time_of_work} {time_under}{time_over}")
+
+            result.write(f"Day {day} Work {time_of_work} {weekend}{overtime}{undertime}{inconclusive} {weekly_time_of_work} {time_under}{time_over}\n")
 
 # ------------------------- To dziala ------------------------------------
 
 
- 
 
-            # jesli w GATE poziom 0 (E/0/*)
-            # to znaczy ze wyszedl z pracy
-            # reszta bram to nadal bramy
-            # w pracy
-
-
-    with open('result', 'w') as result:
-        pass   # plik wyjsciowy 
+    
+        
+     
